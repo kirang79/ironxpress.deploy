@@ -7,7 +7,7 @@ services:
       - "8081:8080"
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
-      - ConnectionStrings__DefaultConnection=Host=db;Database=mydb;Username=postgres;Password=postgres
+      - ConnectionStrings__DefaultConnection=Host=db;Database=mydbv1;Username=postgres;Password=postgres
     networks:
       - ironxpress-net
     depends_on:
@@ -33,7 +33,7 @@ services:
    environment:
     POSTGRES_USER: postgres
     POSTGRES_PASSWORD: postgres
-    POSTGRES_DB: mydb
+    POSTGRES_DB: mydbv1
    networks:
     - ironxpress-net
    volumes:

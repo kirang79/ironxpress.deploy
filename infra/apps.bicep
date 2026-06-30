@@ -31,12 +31,14 @@ param apiMinReplicas int = 0
 param apiMaxReplicas int = 2
 
 // ---- Postgres connection (from the data stack; this stack never creates it) ----
+// postgresHost/postgresPassword have empty defaults so the .bicepparam compiles;
+// real values are supplied at deploy time via `-p` (data-stack output + secret).
 @description('Postgres FQDN, e.g. ironx-dev-pg-xxxx.postgres.database.azure.com')
-param postgresHost string
+param postgresHost string = ''
 param postgresDbName string = 'ironx_${env}'
 param postgresAdmin string = 'ironxadmin'
 @secure()
-param postgresPassword string
+param postgresPassword string = ''
 
 // ---- Application secrets (provided at deploy time from GitHub secrets) ----
 @description('JWT signing key for the API. Required — the API cannot issue/validate tokens without it.')

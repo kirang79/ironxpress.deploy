@@ -16,8 +16,10 @@ param location string = resourceGroup().location
 
 @description('Postgres administrator login + password.')
 param postgresAdmin string = 'ironxadmin'
+// Empty default so the .bicepparam compiles; the real value is supplied at
+// deploy time via `-p postgresPassword=...` (from the PG_PASSWORD secret).
 @secure()
-param postgresPassword string
+param postgresPassword string = ''
 
 @description('Database name for this environment.')
 param postgresDbName string = 'ironx_${env}'

@@ -1,0 +1,107 @@
+# Commission / update IronXpress infrastructure (Bicep). MANUAL ONLY — never runs
+# on push, so an app merge can never touch infra. Defaults to a what-if PREVIEW;
+# you must tick "apply" to make changes. Deployments are always INCREMENTAL
+# (never --mode Complete), and the Postgres CanNotDelete lock guards the data.
+#
+# Required GitHub secrets:
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID   (OIDC)
+#   PG_PASSWORD                                               (Postgres admin pw)
+#   GHCR_USERNAME, GHCR_TOKEN                                 (read:packages, for ACA image pulls)
+# Optional repo variable: AZURE_LOCATION (default: centralindia)
+name: Infra (Bicep)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        options: [dev, prod]
+        default: dev
+      apply:
+        description: Apply changes? (unchecked = what-if preview only)
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  infra:
+    runs-on: ubuntu-latest
+    # "prod" Environment carries the required-reviewer approval gate.
+    environment: ${{ inputs.environment }}
+    env:
+      ENVN: ${{ inputs.environment }}
+      RG: rg-ironx-${{ inputs.environment }}
+      LOCATION: ${{ vars.AZURE_LOCATION || 'centralindia' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Show target subscription
+        uses: azure/cli@v2
+        with:
+          azcliversion: latest
+          inlineScript: az account show --query '{name:name, id:id}' -o table
+
+      - name: Ensure resource group
+        if: ${{ inputs.apply }}
+        uses: azure/cli@v2
+        with:
+          azcliversion: latest
+          inlineScript: az group create -n "$RG" -l "$LOCATION" -o none
+
+      # ---- DATA stack (Postgres, locked) ----
+      - name: Data stack — what-if
+        uses: azure/cli@v2
+        with:
+          azcliversion: latest
+          inlineScript: |
+            az deployment group what-if -g "$RG" -n data \
+              -f infra/data.bicep -p infra/data.${ENVN}.bicepparam \
+              -p postgresPassword='${{ secrets.PG_PASSWORD }}'
+
+      - name: Data stack — apply
+        if: ${{ inputs.apply }}
+        uses: azure/cli@v2
+        with:
+          azcliversion: latest
+          inlineScript: |
+            az deployment group create -g "$RG" -n data \
+              -f infra/data.bicep -p infra/data.${ENVN}.bicepparam \
+              -p postgresPassword='${{ secrets.PG_PASSWORD }}' -o none
+
+      # ---- APPS stack (stateless) ----
+      - name: Apps stack — what-if & apply
+        if: ${{ inputs.apply }}
+        uses: azure/cli@v2
+        with:
+          azcliversion: latest
+          inlineScript: |
+            PG_HOST=$(az deployment group show -g "$RG" -n data \
+              --query properties.outputs.postgresHost.value -o tsv)
+            echo "Postgres host: $PG_HOST"
+            az deployment group what-if -g "$RG" -n apps \
+              -f infra/apps.bicep -p infra/apps.${ENVN}.bicepparam \
+              -p postgresHost="$PG_HOST" postgresPassword='${{ secrets.PG_PASSWORD }}' \
+                 ghcrUsername='${{ secrets.GHCR_USERNAME }}' ghcrToken='${{ secrets.GHCR_TOKEN }}'
+            az deployment group create -g "$RG" -n apps \
+              -f infra/apps.bicep -p infra/apps.${ENVN}.bicepparam \
+              -p postgresHost="$PG_HOST" postgresPassword='${{ secrets.PG_PASSWORD }}' \
+                 ghcrUsername='${{ secrets.GHCR_USERNAME }}' ghcrToken='${{ secrets.GHCR_TOKEN }}' -o none
+
+      - name: Outputs
+        if: ${{ inputs.apply }}
+        uses: azure/cli@v2
+        with:
+          azcliversion: latest
+          inlineScript: |
+            az deployment group show -g "$RG" -n apps --query properties.outputs -o json

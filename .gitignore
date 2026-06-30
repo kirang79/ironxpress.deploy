@@ -1,0 +1,22 @@
+################################################################################
+# Build output — never commit
+################################################################################
+[Bb]in/
+[Oo]bj/
+**/[Bb]in/
+**/[Oo]bj/
+.vs/
+*.user
+
+# Bicep build output (the ARM JSON is generated from the .bicep)
+infra/*.json
+
+# macOS junk
+.DS_Store
+**/.DS_Store
+
+# Local env / secrets
+*.env
+
+# NOTE: web/ (the Flutter web build) is intentionally tracked — it is the
+# artifact the nginx 'web' service serves.

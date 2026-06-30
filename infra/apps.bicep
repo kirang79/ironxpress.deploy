@@ -123,6 +123,15 @@ resource sbRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   }
 }
 
+// Connection string used ONLY by the KEDA queue-depth scaler (managed-identity
+// scale rules aren't supported on the GA Container Apps API). The apps themselves
+// still talk to Service Bus via Managed Identity, not this string.
+resource sbAuthRule 'Microsoft.ServiceBus/namespaces/authorizationRules@2022-10-01-preview' existing = {
+  parent: sb
+  name: 'RootManageSharedAccessKey'
+}
+var sbConnString = sbAuthRule.listKeys().primaryConnectionString
+
 // -------------------------------------------------------- container apps env
 resource acaEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: '${prefix}-aca'
@@ -282,6 +291,7 @@ resource notificationApp 'Microsoft.App/containerApps@2024-03-01' = {
         { name: 'pg-conn', value: pgConnString }
         { name: 'smtp-user', value: smtpUsername }
         { name: 'smtp-pass', value: smtpPassword }
+        { name: 'sb-conn', value: sbConnString }
       ])
     }
     template: {
@@ -312,29 +322,22 @@ resource notificationApp 'Microsoft.App/containerApps@2024-03-01' = {
             name: 'sb-email'
             custom: {
               type: 'azure-servicebus'
-              // KEDA authenticates to Service Bus with the user-assigned identity.
-              // `identity` is valid on the 2024-03-01 API; the bicep type lags, so
-              // the BCP037 warning is suppressed (the value reaches the ARM output).
-              #disable-next-line BCP037
-              identity: uami.id
               metadata: {
-                namespace: sb.name
                 queueName: 'email-jobs'
                 messageCount: '5'
               }
+              auth: [ { secretRef: 'sb-conn', triggerParameter: 'connection' } ]
             }
           }
           {
             name: 'sb-mobile'
             custom: {
               type: 'azure-servicebus'
-              #disable-next-line BCP037
-              identity: uami.id
               metadata: {
-                namespace: sb.name
                 queueName: 'mobile-jobs'
                 messageCount: '5'
               }
+              auth: [ { secretRef: 'sb-conn', triggerParameter: 'connection' } ]
             }
           }
         ]

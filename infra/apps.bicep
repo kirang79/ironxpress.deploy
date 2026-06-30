@@ -38,6 +38,17 @@ param postgresAdmin string = 'ironxadmin'
 @secure()
 param postgresPassword string
 
+// ---- Application secrets (provided at deploy time from GitHub secrets) ----
+@description('JWT signing key for the API. Required — the API cannot issue/validate tokens without it.')
+@secure()
+param jwtKey string = ''
+
+@description('SMTP credentials for outbound email (NotificationService).')
+@secure()
+param smtpUsername string = ''
+@secure()
+param smtpPassword string = ''
+
 var prefix = 'ironx-${env}'
 var unique = substring(uniqueString(resourceGroup().id), 0, 6)
 var tags = { app: 'ironxpress', env: env, tier: 'apps' }
@@ -160,6 +171,7 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
       registries: registries
       secrets: concat(registrySecrets, [
         { name: 'pg-conn', value: pgConnString }
+        { name: 'jwt-key', value: jwtKey }
       ])
     }
     template: {
@@ -172,6 +184,7 @@ resource apiApp 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'ASPNETCORE_URLS', value: 'http://0.0.0.0:8081' }
             { name: 'ASPNETCORE_ENVIRONMENT', value: env == 'prod' ? 'Production' : 'Development' }
             { name: 'ConnectionStrings__DefaultConnection', secretRef: 'pg-conn' }
+            { name: 'Jwt__Key', secretRef: 'jwt-key' }
             { name: 'ApplicationInsights__ConnectionString', value: appInsights.properties.ConnectionString }
           ]
         }
@@ -265,6 +278,8 @@ resource notificationApp 'Microsoft.App/containerApps@2024-03-01' = {
       registries: registries
       secrets: concat(registrySecrets, [
         { name: 'pg-conn', value: pgConnString }
+        { name: 'smtp-user', value: smtpUsername }
+        { name: 'smtp-pass', value: smtpPassword }
       ])
     }
     template: {
@@ -280,6 +295,8 @@ resource notificationApp 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'ServiceBus__FullyQualifiedNamespace', value: sbNamespaceHost }
             { name: 'ServiceBus__Queues__EmailQueue', value: 'email-jobs' }
             { name: 'ServiceBus__Queues__MobileQueue', value: 'mobile-jobs' }
+            { name: 'Email__SmtpUsername', secretRef: 'smtp-user' }
+            { name: 'Email__SmtpPassword', secretRef: 'smtp-pass' }
             { name: 'AZURE_CLIENT_ID', value: uami.properties.clientId }
             { name: 'ApplicationInsights__ConnectionString', value: appInsights.properties.ConnectionString }
           ]
